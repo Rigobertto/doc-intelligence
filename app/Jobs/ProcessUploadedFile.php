@@ -2,8 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Services\AIService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+
+enum ProcessStatus: string
+{
+    case Pending = 'Pending';
+    case Processing = 'Processing';
+    case Failed = 'Failed';
+}
 
 #[Tries(3)]
 class ProcessUploadedFile implements ShouldQueue
@@ -11,6 +19,7 @@ class ProcessUploadedFile implements ShouldQueue
     use Queueable;
 
     public string $identifier;
+    public ProcessStatus $status;
 
     /**
      * Create a new job instance.
@@ -18,13 +27,21 @@ class ProcessUploadedFile implements ShouldQueue
     public function __construct(string $identifier)
     {
         $this->identifier = $identifier;
+        $this->status = ProcessStatus::Pending;
     }
 
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(AIService $aiService): void
     {
-        // Process the file using $this->identifier
+        $this->status = ProcessStatus::Processing;
+
+        try {
+            $aiService->document_analiser($this->identifier);
+        } catch (\Exception $e) {
+            $this->status = ProcessStatus::Failed;
+            throw $e;
+        }
     }
 }
