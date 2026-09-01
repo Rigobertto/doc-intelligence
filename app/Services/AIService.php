@@ -190,8 +190,15 @@ class AIService
                 unset($metadataArray['confidence_level']);
             }
 
+            // Move o arquivo de temp_file para failed_file
+            $originalFileContent = Storage::disk('temp_file')->get($filePath);
+            Storage::disk('failed_file')->put($fileName, $originalFileContent);
+            Storage::disk('temp_file')->delete($filePath);
+
+            $failedFileUrl = Storage::disk('failed_file')->url($fileName);
+
             $failedFileModel = FailedFile::create([
-                'url' => $fileUrl,
+                'url' => $failedFileUrl,
                 'file_name' => $fileName,
             ]);
 

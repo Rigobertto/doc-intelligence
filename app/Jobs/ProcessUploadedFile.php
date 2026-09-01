@@ -33,12 +33,16 @@ class ProcessUploadedFile implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(AIService $aiService): void
+    public function handle(): void
     {
         $this->status = ProcessStatus::Processing;
 
         try {
-            $aiService->document_analiser($this->identifier);
+            $service = env('USE_AI_MOCK', true) 
+                ? app(\App\Services\AIMockService::class) 
+                : app(\App\Services\AIService::class);
+
+            $service->document_analiser($this->identifier);
         } catch (\Exception $e) {
             $this->status = ProcessStatus::Failed;
             throw $e;

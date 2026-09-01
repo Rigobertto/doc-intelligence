@@ -27,4 +27,9 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
-/storage/app/documents
+/storage/app/temp_file
+/storage/app/files
+/storage/app/failed_file
+/public/temp_file
+/public/files
+/public/failed_file

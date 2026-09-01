@@ -63,6 +63,14 @@ return [
             'throw' => false,
         ],
 
+        'failed_file' => [
+            'driver' => 'local',
+            'root' => storage_path('app/failed_file'),
+            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/failed_file',
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -93,6 +101,7 @@ return [
         public_path('storage') => storage_path('app/public'),
         public_path('temp_file') => storage_path('app/temp_file'),
         public_path('files') => storage_path('app/files'),
+        public_path('failed_file') => storage_path('app/failed_file'),
     ],
 
 ];

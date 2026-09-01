@@ -34,15 +34,15 @@ class FailedFileController extends Controller
 
         $failedFile = FailedFile::with('metaData')->findOrFail($id);
 
-        // Mover fisicamente da pasta temp_file para a pasta files
+        // Mover fisicamente da pasta failed_file para a pasta files
         $oldFilePath = basename($failedFile->url);
         $extension = pathinfo($oldFilePath, PATHINFO_EXTENSION);
         $newFilePath = $validated['file_name'] . '.' . $extension;
 
-        if (Storage::disk('temp_file')->exists($oldFilePath)) {
-            $content = Storage::disk('temp_file')->get($oldFilePath);
+        if (Storage::disk('failed_file')->exists($oldFilePath)) {
+            $content = Storage::disk('failed_file')->get($oldFilePath);
             Storage::disk('files')->put($newFilePath, $content);
-            Storage::disk('temp_file')->delete($oldFilePath);
+            Storage::disk('failed_file')->delete($oldFilePath);
         }
 
         $newUrl = Storage::disk('files')->url($newFilePath);
