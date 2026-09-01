@@ -148,3 +148,30 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 ### 9. Excluir Arquivo com Falha
 - **Endpoint:** `DELETE /api/failed-file/{id}`
 - **O que faz:** Remove fisicamente o documento da pasta `failed_file` e exclui o registro de falha no banco de dados.
+
+---
+
+## 🧪 Testes Automatizados
+
+O sistema foi extensivamente testado com o framework **Pest**. As suítes de testes cobrem toda a camada da API (Feature Tests) e a lógica de serviços e filas (Unit Tests), fazendo o *mock* correto das respostas HTTP da OpenAI, dos bancos e dos storages para não onerar APIs externas nem o disco local durante os testes.
+
+Para rodar todos os testes de uma só vez, utilize o comando Artisan na raiz do projeto:
+
+```bash
+php artisan test
+```
+
+Se desejar executar apenas um grupo específico de testes ou arquivos individuais, você pode utilizar filtros:
+
+- **Executar somente Testes da API (Feature):**
+  ```bash
+  php artisan test --filter=Api
+  ```
+- **Executar somente Testes Unitários (Serviços e Jobs):**
+  ```bash
+  php artisan test --testsuite=Unit
+  ```
+- **Executar um arquivo de teste específico:**
+  ```bash
+  php artisan test --filter=AIServiceTest
+  ```
