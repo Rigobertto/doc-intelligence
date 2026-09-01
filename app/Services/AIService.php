@@ -86,8 +86,8 @@ class AIService
     public function document_analiser(string $filePath): Model
     {
         $fileName = basename($filePath);
-        $fileUrl = Storage::disk('documents')->url($filePath);
-        $absolutePath = Storage::disk('documents')->path($filePath);
+        $fileUrl = Storage::disk('temp_file')->url($filePath);
+        $absolutePath = Storage::disk('temp_file')->path($filePath);
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         
         Log::info("Iniciando análise do documento: {$fileName}");
@@ -205,9 +205,20 @@ class AIService
             return $failedFileModel;
         }
 
+        // Move o arquivo de temp_file para files
+        $originalFileContent = Storage::disk('temp_file')->get($filePath);
+        $newFilePath = $newFileName . '.' . $extension;
+        
+        Storage::disk('files')->put($newFilePath, $originalFileContent);
+        
+        // Remove da pasta temporária após mover
+        Storage::disk('temp_file')->delete($filePath);
+        
+        $newFileUrl = Storage::disk('files')->url($newFilePath);
+
         // 1. Cria o model File
         $fileModel = File::create([
-            'url' => $fileUrl,
+            'url' => $newFileUrl,
             'file_name' => $newFileName,
         ]);
 

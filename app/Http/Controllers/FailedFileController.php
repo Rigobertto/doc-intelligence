@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FailedFile;
 use App\Models\File;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class FailedFileController extends Controller
 {
@@ -33,9 +34,22 @@ class FailedFileController extends Controller
 
         $failedFile = FailedFile::with('metaData')->findOrFail($id);
 
+        // Mover fisicamente da pasta temp_file para a pasta files
+        $oldFilePath = basename($failedFile->url);
+        $extension = pathinfo($oldFilePath, PATHINFO_EXTENSION);
+        $newFilePath = $validated['file_name'] . '.' . $extension;
+
+        if (Storage::disk('temp_file')->exists($oldFilePath)) {
+            $content = Storage::disk('temp_file')->get($oldFilePath);
+            Storage::disk('files')->put($newFilePath, $content);
+            Storage::disk('temp_file')->delete($oldFilePath);
+        }
+
+        $newUrl = Storage::disk('files')->url($newFilePath);
+
         // 1. Create the new File record
         $file = File::create([
-            'url' => $failedFile->url,
+            'url' => $newUrl,
             'file_name' => $validated['file_name'],
         ]);
 

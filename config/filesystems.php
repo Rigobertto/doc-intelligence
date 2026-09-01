@@ -47,10 +47,18 @@ return [
             'report' => false,
         ],
 
-        'documents' => [
+        'temp_file' => [
             'driver' => 'local',
-            'root' => storage_path('app/documents'),
-            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/documents',
+            'root' => storage_path('app/temp_file'),
+            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/temp_file',
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
+        'files' => [
+            'driver' => 'local',
+            'root' => storage_path('app/files'),
+            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/files',
             'visibility' => 'public',
             'throw' => false,
         ],
@@ -83,7 +91,8 @@ return [
 
     'links' => [
         public_path('storage') => storage_path('app/public'),
-        public_path('documents') => storage_path('app/documents'),
+        public_path('temp_file') => storage_path('app/temp_file'),
+        public_path('files') => storage_path('app/files'),
     ],
 
 ];

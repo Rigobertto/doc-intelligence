@@ -51,7 +51,7 @@ class FileController extends Controller
             ], 500);
         }
 
-        $path = $file->store('', 'documents');
+        $path = $file->store('', 'temp_file');
 
         ProcessUploadedFile::dispatch($path);
 
