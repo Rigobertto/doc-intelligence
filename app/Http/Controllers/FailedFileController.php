@@ -27,6 +27,11 @@ class FailedFileController extends Controller
         $validated = $request->validate([
             'file_name' => 'required|string',
             'description' => 'required|string',
+        ], [
+            'file_name.required' => 'O nome do arquivo é obrigatório.',
+            'file_name.string' => 'O nome do arquivo deve ser um texto válido.',
+            'description.required' => 'A descrição é obrigatória.',
+            'description.string' => 'A descrição deve ser um texto válido.',
         ]);
 
         $failedFile = FailedFile::with('metaData')->findOrFail($id);

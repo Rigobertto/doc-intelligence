@@ -23,6 +23,9 @@ class FileController extends Controller
     {
         $request->validate([
             'q' => 'required|string',
+        ], [
+            'q.required' => 'O termo de pesquisa (q) é obrigatório.',
+            'q.string' => 'O termo de pesquisa deve ser um texto válido.',
         ]);
 
         $term = $request->input('q');
@@ -41,6 +44,10 @@ class FileController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:pdf,png,jpeg,jpg'],
+        ], [
+            'file.required' => 'O envio do arquivo é obrigatório.',
+            'file.file' => 'O arquivo enviado não é válido.',
+            'file.mimes' => 'O arquivo deve ser do tipo: pdf, png, jpeg, jpg.',
         ]);
 
         $file = $request->file('file');
