@@ -21,18 +21,12 @@ class ProcessUploadedFile implements ShouldQueue
     public string $identifier;
     public ProcessStatus $status;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(string $identifier)
     {
         $this->identifier = $identifier;
         $this->status = ProcessStatus::Pending;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         $this->status = ProcessStatus::Processing;

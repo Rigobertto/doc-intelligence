@@ -60,4 +60,21 @@ class FileController extends Controller
             'identifier' => $path,
         ]);
     }
+
+    public function destroy($id)
+    {
+        $file = File::findOrFail($id);
+
+        $filePath = basename($file->url);
+        if (Storage::disk('files')->exists($filePath)) {
+            Storage::disk('files')->delete($filePath);
+        }
+
+        $file->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Arquivo e registro deletados com sucesso.'
+        ]);
+    }
 }

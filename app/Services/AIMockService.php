@@ -19,12 +19,7 @@ class AIMockService
         $this->mockStyle = env('MOCK_RESPONSE_STYLE', 'success');
     }
 
-    /**
-     * Recebe o caminho do arquivo, mocka a resposta da LLM e salva os models.
-     * 
-     * @param string $filePath
-     * @return Model
-     */
+    
     public function document_analiser(string $filePath): Model
     {
         $fileName = basename($filePath);
@@ -37,14 +32,12 @@ class AIMockService
         // Simula o tempo de resposta da API
         sleep(2);
 
-        // Gera a resposta mockada
         $responseData = $this->getMockedResponse();
 
         Log::debug("[MOCK] Conteúdo gerado (texto da mensagem): \n" . $responseData);
 
         $cleanJson = trim($responseData);
         
-        // Decodificando o JSON mockado para array
         $metadataArray = json_decode($cleanJson, true) ?? [];
         
         if (empty($metadataArray)) {

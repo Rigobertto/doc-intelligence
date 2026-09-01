@@ -22,9 +22,6 @@ class FailedFileController extends Controller
         ]);
     }
 
-    /**
-     * Fix a failed file by providing a corrected file_name and description.
-     */
     public function fix(Request $request, $id)
     {
         $validated = $request->validate([
@@ -34,7 +31,6 @@ class FailedFileController extends Controller
 
         $failedFile = FailedFile::with('metaData')->findOrFail($id);
 
-        // Mover fisicamente da pasta failed_file para a pasta files
         $oldFilePath = basename($failedFile->url);
         $extension = pathinfo($oldFilePath, PATHINFO_EXTENSION);
         $newFilePath = $validated['file_name'] . '.' . $extension;
@@ -47,13 +43,11 @@ class FailedFileController extends Controller
 
         $newUrl = Storage::disk('files')->url($newFilePath);
 
-        // 1. Create the new File record
         $file = File::create([
             'url' => $newUrl,
             'file_name' => $validated['file_name'],
         ]);
 
-        // 2. Prepare and create the FileMetaData record
         $data = [
             'file_name' => $validated['file_name'],
             'metadata' => [
@@ -63,10 +57,9 @@ class FailedFileController extends Controller
 
         $file->metaData()->create([
             'data' => $data,
-            'confidence_level' => 1.0, // Manually fixed, so 100% confidence
+            'confidence_level' => 1.0, 
         ]);
 
-        // 3. Delete the old FailedFile (cascades to FailedFileMetaData)
         $failedFile->delete();
 
         $file->load('metaData');
@@ -75,6 +68,23 @@ class FailedFileController extends Controller
             'success' => true,
             'message' => 'Arquivo corrigido e movido com sucesso.',
             'data' => $file
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $failedFile = FailedFile::findOrFail($id);
+
+        $filePath = basename($failedFile->url);
+        if (Storage::disk('failed_file')->exists($filePath)) {
+            Storage::disk('failed_file')->delete($filePath);
+        }
+
+        $failedFile->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Arquivo com falha e registro deletados com sucesso.'
         ]);
     }
 }

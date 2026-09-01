@@ -8,14 +8,10 @@ use Illuminate\Support\Facades\DB;
 
 class FailedJobController extends Controller
 {
-    /**
-     * Lista todos os jobs que falharam na tabela failed_jobs.
-     */
     public function index()
     {
         $failedJobs = DB::table('failed_jobs')->latest('failed_at')->get();
 
-        // Decodificando o payload para facilitar a leitura
         $failedJobs->transform(function ($job) {
             $job->payload = json_decode($job->payload);
             return $job;
@@ -27,13 +23,10 @@ class FailedJobController extends Controller
         ]);
     }
 
-    /**
-     * Executa o retry de um job específico (ID ou UUID) ou de todos (usando 'all').
-     */
     public function retry(Request $request)
     {
         $request->validate([
-            'id' => 'required' // pode ser o ID, UUID ou a string 'all'
+            'id' => 'required' // ID, UUI ou ALL
         ]);
 
         $id = $request->input('id');

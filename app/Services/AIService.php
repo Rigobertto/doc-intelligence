@@ -77,12 +77,7 @@ class AIService
         ';
     }
 
-    /**
-     * Recebe o caminho do arquivo, processa via LLM e salva os models.
-     * 
-     * @param string $filePath
-     * @return File
-     */
+    
     public function document_analiser(string $filePath): Model
     {
         $fileName = basename($filePath);
@@ -90,21 +85,15 @@ class AIService
         $absolutePath = Storage::disk('temp_file')->path($filePath);
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         
-        Log::info("Iniciando análise do documento: {$fileName}");
-
         $userMessageContent = [];
 
         if ($extension === 'pdf') {
-            Log::info("Processando PDF. Extraindo texto...");
             $parser = new Parser();
             $pdf = $parser->parseFile($absolutePath);
             $text = $pdf->getText();
             
-            Log::debug("Texto extraído do PDF: \n" . $text);
-            
             $userMessageContent = "Analyze this PDF document named '{$fileName}'. Create a JSON with relevant inferred metadata fields. Document text content:\n\n" . substr($text, 0, 15000); // Limiting text to avoid token limits
         } elseif (in_array($extension, ['jpg', 'jpeg', 'png'])) {
-            Log::info("Processando Imagem. Convertendo para Base64...");
             $mime = mime_content_type($absolutePath) ?: 'image/jpeg';
             $base64 = base64_encode(file_get_contents($absolutePath));
             
@@ -125,7 +114,6 @@ class AIService
             throw new \InvalidArgumentException("Tipo de arquivo não suportado para análise: {$extension}");
         }
         
-        Log::info("Enviando payload para a LLM...", ['model' => $this->model]);
 
         $response = Http::withToken($this->apiKey)
             ->timeout(120)
@@ -149,14 +137,10 @@ class AIService
                 'status' => $response->status(),
                 'body' => $response->body()
             ]);
-        } else {
-            Log::info("Resposta da LLM recebida com sucesso.");
-            Log::debug("Resposta COMPLETA da LLM (JSON integral): \n" . $response->body());
         }
 
         $responseData = $response->json('choices.0.message.content') ?? '';
         
-        Log::debug("Conteúdo extraído (texto da mensagem): \n" . $responseData);
         
         $cleanJson = trim($responseData);
         
@@ -183,13 +167,11 @@ class AIService
         $newFileName = $metadataArray['file_name'] ?? $fallbackName;
         if (empty($metadataArray) || $confidenceLevel === null || (float)$confidenceLevel < $this->minConfidenceLevel) {
             $level = $confidenceLevel ?? 'N/A';
-            Log::warning("Documento inválido ou Nível de confiança ({$level}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
-            
+                        
             if (isset($metadataArray['confidence_level'])) {
                 unset($metadataArray['confidence_level']);
             }
 
-            // Move o arquivo de temp_file para failed_file
             $originalFileContent = Storage::disk('temp_file')->get($filePath);
             Storage::disk('failed_file')->put($fileName, $originalFileContent);
             Storage::disk('temp_file')->delete($filePath);
@@ -211,24 +193,19 @@ class AIService
             return $failedFileModel;
         }
 
-        // Move o arquivo de temp_file para files
         $originalFileContent = Storage::disk('temp_file')->get($filePath);
         $newFilePath = $newFileName . '.' . $extension;
         
         Storage::disk('files')->put($newFilePath, $originalFileContent);
-        
-        // Remove da pasta temporária após mover
         Storage::disk('temp_file')->delete($filePath);
         
         $newFileUrl = Storage::disk('files')->url($newFilePath);
 
-        // 1. Cria o model File
         $fileModel = File::create([
             'url' => $newFileUrl,
             'file_name' => $newFileName,
         ]);
 
-        // 2. Cria o FileMetaData (relacionado ao File) passando o JSON decodificado
         
         if (isset($metadataArray['confidence_level'])) {
             unset($metadataArray['confidence_level']);
@@ -239,10 +216,7 @@ class AIService
             'confidence_level' => $confidenceLevel,
         ]);
 
-        // Carrega o relacionamento para retornar tudo estruturado
         $fileModel->load('metaData');
-
-        Log::info("Documento salvo no banco de dados com sucesso. ID: {$fileModel->id}");
 
         return $fileModel;
     }

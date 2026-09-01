@@ -17,7 +17,7 @@ API robusta em Laravel para o processamento assíncrono de documentos e notas fi
 
 1. **Clone o repositório e acesse a pasta do projeto:**
    ```bash
-   git clone <url-do-repositorio>
+   git clone https://github.com/Rigobertto/doc-intelligence.git
    cd doc-intelligence
    ```
 
@@ -76,8 +76,8 @@ DB_PASSWORD=sua_senha
 ```
 
 ### Configurações da IA
+Chave da API (eu enviei uma chave para testes no corpo do email, essa chave será válida por 7 dias a contar da data de envio do email, em caso de dúvida entre em contato para fazer uma nova chave.)
 ```env
-# Chave da API da OpenAI para quando for usar em modo real (enviei uma chave de teste no corpo do email, essa chave será válida por 7 dias a contar da data de envio do email)
 OPENAI_API_KEY=sk-xxxx...
 
 # Régua de confiança: Se a IA retornar uma confiança menor que esse valor (0 a 1), o arquivo será enviado para triagem humana (failed_file).
@@ -140,3 +140,11 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 ### 7. Tentar Reprocessar Jobs Travados
 - **Endpoint:** `POST /api/failed-jobs/retry`
 - **O que faz:** Re-enfileira todos os trabalhos que deram problema (executa o equivalente ao comando `queue:retry all`). Muito útil se a API da OpenAI caiu temporariamente e você quer reprocessar toda a fila atrasada de uma só vez.
+
+### 8. Excluir Arquivo Processado
+- **Endpoint:** `DELETE /api/file/{id}`
+- **O que faz:** Remove fisicamente o documento da pasta `files` e exclui o registro de sucesso (com seus metadados) no banco de dados.
+
+### 9. Excluir Arquivo com Falha
+- **Endpoint:** `DELETE /api/failed-file/{id}`
+- **O que faz:** Remove fisicamente o documento da pasta `failed_file` e exclui o registro de falha no banco de dados.
