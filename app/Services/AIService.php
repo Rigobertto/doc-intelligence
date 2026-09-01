@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\FailedFile;
 use App\Models\File;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -14,14 +16,65 @@ class AIService
     private string $apiKey;
     private string $model;
     private string $systemPrompt;
+    private float $minConfidenceLevel;
 
     public function __construct()
     {
         $this->apiUrl = env('AI_URL', 'https://api.openai.com/v1/chat/completions');
         $this->apiKey = env('AI_API_KEY', '');
         $this->model = env('AI_MODEL', 'gpt-4o-mini');
+        $this->minConfidenceLevel = env('AI_MIN_CONFIDENCE_LEVEL', 0.7);
         
-        $this->systemPrompt = "You are an expert document analyzer. Extract the main metadata from the provided document context. You MUST return your response as a valid JSON object. NOT USE MARKDOWN ANCHOS ``` or ``` ";
+        $this->systemPrompt = 
+        '
+        You are a specialized document extraction engine. Your sole objective is to analyze the provided document and extract structured data strictly adhering to the JSON schema defined below.
+
+### OPERATIONAL RULES
+1. OUTPUT FORMAT: Respond ONLY with a single, raw, valid JSON object. Do not include markdown code fences (e.g., ```json or ```), introduction, commentary, or trailing text.
+2. LANGUAGE: The field names (keys) must remain in English as defined in the schema. All extracted values, descriptions, and dynamic metadata values must be in Brazilian Portuguese (pt-BR).
+3. MISSING, EMPTY, OR UNREADABLE DATA: 
+   - If a specific field, form box, or value is missing, unfilled, blank, illegible, or obscured, assign its value strictly as `null`. Never fabricate, guess, or hallucinate data.
+   - If the document is entirely blank, contains only empty form boxes/templates, or has no extractable data:
+     * Set `metadata` to an empty object `{}`.
+     * Describe the state in `description` (e.g., "Documento em branco, modelo não preenchido ou sem dados extraíveis.").
+     * Use generic placeholders for `file_name` (e.g., `documento_vazio_nao_identificado_[date]`).
+4. FRAUD, ANOMALY & MANIPULATION DETECTION:
+   - Scrutinize the document for visual or logical manipulation: mismatched fonts, misaligned text, irregular artifacting around numbers/names, patched backgrounds, or abnormal spacing.
+   - Detect evidently fake numbers, placeholders, or sequence patterns (e.g., sequential/repeated IDs like `123456789`, `000.000.000-00`, `11.111.111/1111-11`, impossible issue dates, or invalid mathematical totals/check-digits).
+5. CONFIDENCE SCORING: Strictly evaluate document integrity, OCR clarity, field completeness, and authenticity markers. Apply severe penalties to `confidence_level` under the following conditions:
+   - Empty documents, blank pages, or documents containing predominantly blank/unfilled fields or empty form boxes.
+   - Documents with visibly manipulated regions, digital tampering artifacts, or mismatched typography.
+   - Documents presenting clearly fake, sequential, placeholder, or structurally invalid identifiers (CPFs, CNPJs, invoice IDs, barcodes).
+
+### JSON SCHEMA
+{
+  "file_name": "[type]_[identifier]_[date]",
+  "metadata": {
+    "description": "string (A concise description in Portuguese summarizing the document type, main subject, parties involved, and explicitly noting any observed anomalies, blank fields, or signs of tampering)",
+    "dynamic_field_1": "value",
+    "dynamic_field_2": 0.00
+  },
+  "confidence_level": 0.00
+}
+
+### FIELD SPECIFICATIONS
+- "file_name": Must follow the naming standard `[type]_[identifier]_[date]`.
+  * `[type]`: Standardized document category in lowercase snake_case (e.g., `nota_fiscal`, `contrato_prestacao_servicos`, `comprovante_pagamento`, `relatorio_medico`, or `documento_vazio` if no type can be identified).
+  * `[identifier]`: Primary unique identifier such as a sanitized document number, invoice ID, CPF/CNPJ, or primary party name (alphanumerics only, separated by underscores). If unidentifiable or fake, use `nao_identificado` or `suspeita_invalido`.
+  * `[date]`: Must be the current execution date/time representing "today", formatted strictly as `YYYY-MM-DD` (derived from the `.date("Y-m-d")` format, using hyphens or underscores to maintain valid filename syntax).
+- "description": High-level synthesis in Portuguese detailing the document purpose and key entities, or stating clearly if the document contains blank boxes, signs of digital manipulation, or invalid placeholder numbers.
+- "metadata": Key-value pairs extracted dynamically from the document.
+  * Extract all relevant entities, including but not limited to: full names, corporate names, tax IDs (CPF/CNPJ), document-internal dates (in `YYYY-MM-DD` format), currency values (as numerical floats), line items, and addresses.
+  * Set unreadable, missing, or blank box values to `null`.
+  * Return `{}` if no valid entities exist.
+- "confidence_level": A float between `0.0` and `1.0` representing total extraction certainty and document validity:
+  * `1.0`: Completely legible, verified checksums/totals, fully filled fields, zero manipulation signs or ambiguities.
+  * `0.7 - 0.9`: High legibility and authenticity, with minor OCR noise or non-critical omitted secondary fields.
+  * `0.3 - 0.6`: Degraded OCR, partial form boxes left blank, or non-critical numerical discrepancies.
+  * `0.0 - 0.2`: Empty/blank documents, unfilled form templates, evident signs of digital tampering/alteration, or clearly fake/sequential identifiers.
+        
+        You MUST use the current date in the file_name, which is: "' . date('Y-m-d') . '" at the end of the file name.
+        ';
     }
 
     /**
@@ -30,7 +83,7 @@ class AIService
      * @param string $filePath
      * @return File
      */
-    public function document_analiser(string $filePath): File
+    public function document_analiser(string $filePath): Model
     {
         $fileName = basename($filePath);
         $fileUrl = Storage::disk('documents')->url($filePath);
@@ -128,15 +181,45 @@ class AIService
             Log::warning("A LLM retornou um JSON vazio ou inválido.");
         }
 
+        $confidenceLevel = $metadataArray['confidence_level'] ?? null;
+        $newFileName = $metadataArray['file_name'] ?? null;
+        if($confidenceLevel !== null && $confidenceLevel < $this->minConfidenceLevel){
+            Log::warning("Nível de confiança ({$confidenceLevel}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
+            
+            if (isset($metadataArray['confidence_level'])) {
+                unset($metadataArray['confidence_level']);
+            }
+
+            $failedFileModel = FailedFile::create([
+                'url' => $fileUrl,
+                'file_name' => $fileName,
+            ]);
+
+            $failedFileModel->metaData()->create([
+                'data' => $metadataArray,
+                'confidence_level' => $confidenceLevel,
+            ]);
+
+            $failedFileModel->load('metaData');
+            
+            return $failedFileModel;
+        }
+
         // 1. Cria o model File
         $fileModel = File::create([
             'url' => $fileUrl,
-            'file_name' => $fileName,
+            'file_name' => $newFileName,
         ]);
 
         // 2. Cria o FileMetaData (relacionado ao File) passando o JSON decodificado
+        
+        if (isset($metadataArray['confidence_level'])) {
+            unset($metadataArray['confidence_level']);
+        }
+
         $fileModel->metaData()->create([
             'data' => $metadataArray,
+            'confidence_level' => $confidenceLevel,
         ]);
 
         // Carrega o relacionamento para retornar tudo estruturado

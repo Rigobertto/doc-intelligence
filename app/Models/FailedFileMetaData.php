@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class FileMetaData extends Model
+class FailedFileMetaData extends Model
 {
-    protected $fillable = ['file_id', 'data', 'confidence_level'];
+    protected $fillable = ['failed_file_id', 'data', 'confidence_level'];
 
     protected function casts(): array
     {
@@ -16,8 +16,8 @@ class FileMetaData extends Model
         ];
     }
 
-    public function file()
+    public function failedFile()
     {
-        return $this->belongsTo(File::class);
+        return $this->belongsTo(FailedFile::class, 'failed_file_id');
     }
 }
