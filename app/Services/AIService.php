@@ -88,7 +88,7 @@ class AIService
         $userMessageContent = [];
 
         if ($extension === 'pdf') {
-            $parser = new Parser();
+            $parser = app(Parser::class);
             $pdf = $parser->parseFile($absolutePath);
             $text = $pdf->getText();
             
