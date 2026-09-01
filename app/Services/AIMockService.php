@@ -2,148 +2,155 @@
 
 namespace App\Services;
 
+use App\Models\FailedFile;
 use App\Models\File;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Smalot\PdfParser\Parser;
 
-class AIService
+class AIMockService
 {
-    private string $apiUrl;
-    private string $apiKey;
-    private string $model;
-    private string $systemPrompt;
+    private float $minConfidenceLevel;
+    private string $mockStyle;
 
     public function __construct()
     {
-        $this->apiUrl = env('AI_URL', 'https://api.openai.com/v1/chat/completions');
-        $this->apiKey = env('AI_API_KEY', '');
-        $this->model = env('AI_MODEL', 'gpt-4o-mini');
-        
-        $this->systemPrompt = "You are an expert document analyzer. Extract the main metadata from the provided document context. You MUST return your response as a valid JSON object. NOT USE MARKDOWN ANCHOS ``` or ``` ";
+        $this->minConfidenceLevel = env('AI_MIN_CONFIDENCE_LEVEL', 0.7);
+        $this->mockStyle = env('MOCK_RESPONSE_STYLE', 'success');
     }
 
     /**
-     * Recebe o caminho do arquivo, processa via LLM e salva os models.
+     * Recebe o caminho do arquivo, mocka a resposta da LLM e salva os models.
      * 
      * @param string $filePath
-     * @return File
+     * @return Model
      */
-    public function document_analiser(string $filePath): File
+    public function document_analiser(string $filePath): Model
     {
         $fileName = basename($filePath);
-        $fileUrl = Storage::disk('documents')->url($filePath);
-        $absolutePath = Storage::disk('documents')->path($filePath);
+        $fileUrl = Storage::disk('temp_file')->url($filePath);
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         
-        Log::info("Iniciando análise do documento: {$fileName}");
+        Log::info("[MOCK] Iniciando análise do documento: {$fileName}");
+        Log::info("[MOCK] Estilo de resposta configurado: {$this->mockStyle}");
 
-        $userMessageContent = [];
+        // Simula o tempo de resposta da API
+        sleep(2);
 
-        if ($extension === 'pdf') {
-            Log::info("Processando PDF. Extraindo texto...");
-            $parser = new Parser();
-            $pdf = $parser->parseFile($absolutePath);
-            $text = $pdf->getText();
-            
-            Log::debug("Texto extraído do PDF: \n" . $text);
-            
-            $userMessageContent = "Analyze this PDF document named '{$fileName}'. Create a JSON with relevant inferred metadata fields. Document text content:\n\n" . substr($text, 0, 15000); // Limiting text to avoid token limits
-        } elseif (in_array($extension, ['jpg', 'jpeg', 'png'])) {
-            Log::info("Processando Imagem. Convertendo para Base64...");
-            $mime = mime_content_type($absolutePath) ?: 'image/jpeg';
-            $base64 = base64_encode(file_get_contents($absolutePath));
-            
-            $userMessageContent = [
-                [
-                    'type' => 'text',
-                    'text' => "Analyze this image document named '{$fileName}'. Create a JSON with relevant inferred metadata fields.",
-                ],
-                [
-                    'type' => 'image_url',
-                    'image_url' => [
-                        'url' => "data:{$mime};base64,{$base64}",
-                    ]
-                ]
-            ];
-        } else {
-            Log::error("Tipo de arquivo não suportado: {$extension}");
-            throw new \InvalidArgumentException("Tipo de arquivo não suportado para análise: {$extension}");
-        }
-        
-        Log::info("Enviando payload para a LLM...", ['model' => $this->model]);
+        // Gera a resposta mockada
+        $responseData = $this->getMockedResponse();
 
-        $response = Http::withToken($this->apiKey)
-            ->timeout(120)
-            ->post($this->apiUrl, [
-                'model' => $this->model,
-                'response_format' => ['type' => 'json_object'],
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => $this->systemPrompt,
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $userMessageContent,
-                    ],
-                ],
-            ]);
+        Log::debug("[MOCK] Conteúdo gerado (texto da mensagem): \n" . $responseData);
 
-        if ($response->failed()) {
-            Log::error("Erro na chamada da LLM", [
-                'status' => $response->status(),
-                'body' => $response->body()
-            ]);
-        } else {
-            Log::info("Resposta da LLM recebida com sucesso.");
-            Log::debug("Resposta COMPLETA da LLM (JSON integral): \n" . $response->body());
-        }
-
-        $responseData = $response->json('choices.0.message.content') ?? '';
-        
-        Log::debug("Conteúdo extraído (texto da mensagem): \n" . $responseData);
-        
-        // Limpeza de caracteres residuais (Markdown ou aspas extras retornadas por alguns modelos)
         $cleanJson = trim($responseData);
         
-        if (str_starts_with($cleanJson, '```')) {
-            $cleanJson = preg_replace('/^```(?:json)?\s*/i', '', $cleanJson);
-            $cleanJson = preg_replace('/\s*```$/', '', $cleanJson);
-        }
-        
-        // Extrai garantidamente apenas o conteúdo entre as chaves externas principal
-        $start = strpos($cleanJson, '{');
-        $end = strrpos($cleanJson, '}');
-        
-        if ($start !== false && $end !== false) {
-            $cleanJson = substr($cleanJson, $start, $end - $start + 1);
-        }
-        
-        // Decodificando o JSON retornado pela LLM para array (se falhar, usa array vazio)
+        // Decodificando o JSON mockado para array
         $metadataArray = json_decode($cleanJson, true) ?? [];
         
         if (empty($metadataArray)) {
-            Log::warning("A LLM retornou um JSON vazio ou inválido.");
+            Log::warning("[MOCK] O JSON mockado retornou vazio ou é inválido.");
         }
 
-        // 1. Cria o model File
+        $confidenceLevel = $metadataArray['confidence_level'] ?? null;
+        $newFileName = $metadataArray['file_name'] ?? 'documento_mockado_invalido';
+
+        if ($confidenceLevel !== null && $confidenceLevel < $this->minConfidenceLevel) {
+            Log::warning("[MOCK] Nível de confiança ({$confidenceLevel}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
+            
+            if (isset($metadataArray['confidence_level'])) {
+                unset($metadataArray['confidence_level']);
+            }
+
+            // Move o arquivo de temp_file para failed_file
+            $originalFileContent = Storage::disk('temp_file')->get($filePath);
+            Storage::disk('failed_file')->put($fileName, $originalFileContent);
+            Storage::disk('temp_file')->delete($filePath);
+
+            $failedFileUrl = Storage::disk('failed_file')->url($fileName);
+
+            $failedFileModel = FailedFile::create([
+                'url' => $failedFileUrl,
+                'file_name' => $fileName,
+            ]);
+
+            $failedFileModel->metaData()->create([
+                'data' => $metadataArray,
+                'confidence_level' => $confidenceLevel,
+            ]);
+
+            $failedFileModel->load('metaData');
+            
+            return $failedFileModel;
+        }
+
+        // Fluxo de sucesso
+        $originalFileContent = Storage::disk('temp_file')->get($filePath);
+        $newFilePath = $newFileName . '.' . $extension;
+        
+        Storage::disk('files')->put($newFilePath, $originalFileContent);
+        Storage::disk('temp_file')->delete($filePath);
+        
+        $newFileUrl = Storage::disk('files')->url($newFilePath);
+
         $fileModel = File::create([
-            'url' => $fileUrl,
-            'file_name' => $fileName,
+            'url' => $newFileUrl,
+            'file_name' => $newFileName,
         ]);
 
-        // 2. Cria o FileMetaData (relacionado ao File) passando o JSON decodificado
+        if (isset($metadataArray['confidence_level'])) {
+            unset($metadataArray['confidence_level']);
+        }
+
         $fileModel->metaData()->create([
             'data' => $metadataArray,
+            'confidence_level' => $confidenceLevel,
         ]);
 
-        // Carrega o relacionamento para retornar tudo estruturado
         $fileModel->load('metaData');
 
-        Log::info("Documento salvo no banco de dados com sucesso. ID: {$fileModel->id}");
+        Log::info("[MOCK] Documento salvo no banco de dados com sucesso. ID: {$fileModel->id}");
 
         return $fileModel;
+    }
+
+    private function getMockedResponse(): string
+    {
+        $date = date('Y-m-d');
+        $random = rand(1000, 9999);
+        
+        return match ($this->mockStyle) {
+            'low_confidence' => json_encode([
+                'file_name' => "documento_desconhecido_{$random}_{$date}",
+                'metadata' => [
+                    'description' => 'Documento com baixa legibilidade ou informações faltando.',
+                    'razao_social' => null,
+                ],
+                'confidence_level' => 0.4
+            ]),
+            'invalid_json' => '{"file_name": "teste", "metadata": { "description": "faltando aspas }',
+            'success' => json_encode([
+                'file_name' => "carteira_identidade_{$random}_{$date}",
+                'metadata' => [
+                    'description' => 'Carteira de identidade extraída com sucesso (MOCK).',
+                    'numero' => "{$random}",
+                    'nome' => 'João Silva',
+                    'nome_mae' => 'Maria Silva',
+                    'data_nascimento' => '2000-01-01',
+                    'data_emissao' => '2022-01-01',
+                    'data_validade' => '2022-01-01',
+                    'orgao_emissor' => 'SSP',
+                    'tipo_documento' => 'RG',
+                ],
+                'confidence_level' => 0.95
+            ]),
+            default => json_encode([
+                'file_name' => "documento_padrao_{$random}_{$date}",
+                'metadata' => [
+                    'description' => 'Resposta padrão do mock.',
+                    'numero' => "{$random}",
+                ],
+                'confidence_level' => 0.8
+            ])
+        };
     }
 }
