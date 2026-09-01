@@ -78,7 +78,7 @@ DB_PASSWORD=sua_senha
 ### Configurações da IA
 Chave da API (eu enviei uma chave para testes no corpo do email, essa chave será válida por 7 dias a contar da data de envio do email, em caso de dúvida entre em contato para fazer uma nova chave.)
 ```env
-OPENAI_API_KEY=sk-xxxx...
+AI_API_KEY="sk-xxxx..."
 
 # Régua de confiança: Se a IA retornar uma confiança menor que esse valor (0 a 1), o arquivo será enviado para triagem humana (failed_file).
 AI_MIN_CONFIDENCE_LEVEL=0.7 
@@ -88,7 +88,7 @@ AI_MIN_CONFIDENCE_LEVEL=0.7
 O projeto possui um serviço de Mock embutido para que você possa testar todos os fluxos (sucesso, falhas, quebra de JSON) sem gastar tokens ou bater na API oficial.
 
 ```env
-# Se 'true', desvia as requisições da OpenAI e usa o AIMockService internamente.
+# Se 'true', desvia as requisições da IA da NVidia e usa o AIMockService internamente.
 USE_AI_MOCK=true
 
 # Estilo de resposta do Mock (Se USE_AI_MOCK=true):
@@ -139,7 +139,7 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 
 ### 7. Tentar Reprocessar Jobs Travados
 - **Endpoint:** `POST /api/failed-jobs/retry`
-- **O que faz:** Re-enfileira todos os trabalhos que deram problema (executa o equivalente ao comando `queue:retry all`). Muito útil se a API da OpenAI caiu temporariamente e você quer reprocessar toda a fila atrasada de uma só vez.
+- **O que faz:** Re-enfileira todos os trabalhos que deram problema (executa o equivalente ao comando `queue:retry all`). Muito útil se a API da Nvidia caiu temporariamente e você quer reprocessar toda a fila atrasada de uma só vez.
 
 ### 8. Excluir Arquivo Processado
 - **Endpoint:** `DELETE /api/file/{id}`
@@ -153,7 +153,7 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 
 ## 🧪 Testes Automatizados
 
-O sistema foi extensivamente testado com o framework **Pest**. As suítes de testes cobrem toda a camada da API (Feature Tests) e a lógica de serviços e filas (Unit Tests), fazendo o *mock* correto das respostas HTTP da OpenAI, dos bancos e dos storages para não onerar APIs externas nem o disco local durante os testes.
+O sistema foi extensivamente testado com o framework **Pest**. As suítes de testes cobrem toda a camada da API (Feature Tests) e a lógica de serviços e filas (Unit Tests), fazendo o *mock* correto das respostas HTTP da Nvidia, dos bancos e dos storages para não onerar APIs externas nem o disco local durante os testes.
 
 Para rodar todos os testes de uma só vez, utilize o comando Artisan na raiz do projeto:
 

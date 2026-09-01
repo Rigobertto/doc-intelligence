@@ -20,9 +20,9 @@ class AIService
 
     public function __construct()
     {
-        $this->apiUrl = env('AI_URL', 'https://api.openai.com/v1/chat/completions');
-        $this->apiKey = env('AI_API_KEY', '');
-        $this->model = env('AI_MODEL', 'gpt-4o-mini');
+        $this->apiUrl = env('AI_URL');
+        $this->apiKey = env('AI_API_KEY');
+        $this->model = env('AI_MODEL');
         $this->minConfidenceLevel = env('AI_MIN_CONFIDENCE_LEVEL', 0.7);
         
         $this->systemPrompt = 
