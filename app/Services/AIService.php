@@ -158,7 +158,6 @@ class AIService
         
         Log::debug("Conteúdo extraído (texto da mensagem): \n" . $responseData);
         
-        // Limpeza de caracteres residuais (Markdown ou aspas extras retornadas por alguns modelos)
         $cleanJson = trim($responseData);
         
         if (str_starts_with($cleanJson, '```')) {
@@ -166,7 +165,6 @@ class AIService
             $cleanJson = preg_replace('/\s*```$/', '', $cleanJson);
         }
         
-        // Extrai garantidamente apenas o conteúdo entre as chaves externas principal
         $start = strpos($cleanJson, '{');
         $end = strrpos($cleanJson, '}');
         
@@ -174,7 +172,6 @@ class AIService
             $cleanJson = substr($cleanJson, $start, $end - $start + 1);
         }
         
-        // Decodificando o JSON retornado pela LLM para array (se falhar, usa array vazio)
         $metadataArray = json_decode($cleanJson, true) ?? [];
         
         if (empty($metadataArray)) {
@@ -182,9 +179,11 @@ class AIService
         }
 
         $confidenceLevel = $metadataArray['confidence_level'] ?? null;
-        $newFileName = $metadataArray['file_name'] ?? null;
-        if($confidenceLevel !== null && $confidenceLevel < $this->minConfidenceLevel){
-            Log::warning("Nível de confiança ({$confidenceLevel}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
+        $fallbackName = pathinfo($fileName, PATHINFO_FILENAME);
+        $newFileName = $metadataArray['file_name'] ?? $fallbackName;
+        if (empty($metadataArray) || $confidenceLevel === null || (float)$confidenceLevel < $this->minConfidenceLevel) {
+            $level = $confidenceLevel ?? 'N/A';
+            Log::warning("Documento inválido ou Nível de confiança ({$level}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
             
             if (isset($metadataArray['confidence_level'])) {
                 unset($metadataArray['confidence_level']);

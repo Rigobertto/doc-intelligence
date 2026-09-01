@@ -50,12 +50,13 @@ class AIMockService
         if (empty($metadataArray)) {
             Log::warning("[MOCK] O JSON mockado retornou vazio ou é inválido.");
         }
-
         $confidenceLevel = $metadataArray['confidence_level'] ?? null;
-        $newFileName = $metadataArray['file_name'] ?? 'documento_mockado_invalido';
+        $fallbackName = pathinfo($fileName, PATHINFO_FILENAME);
+        $newFileName = $metadataArray['file_name'] ?? $fallbackName;
 
-        if ($confidenceLevel !== null && $confidenceLevel < $this->minConfidenceLevel) {
-            Log::warning("[MOCK] Nível de confiança ({$confidenceLevel}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
+        if (empty($metadataArray) || $confidenceLevel === null || (float)$confidenceLevel < $this->minConfidenceLevel) {
+            $level = $confidenceLevel ?? 'N/A';
+            Log::warning("[MOCK] Documento inválido ou Nível de confiança ({$level}) abaixo do mínimo ({$this->minConfidenceLevel}). Registrando como FailedFile.");
             
             if (isset($metadataArray['confidence_level'])) {
                 unset($metadataArray['confidence_level']);

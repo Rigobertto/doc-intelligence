@@ -47,7 +47,7 @@ class FileController extends Controller
         
         if (!$file->getRealPath()) {
             return response()->json([
-                'message' => 'Internal Server Error: Temporary file not generated.'
+                'message' => 'Erro interno do servidor: Arquivo temporário não gerado.'
             ], 500);
         }
 
@@ -56,7 +56,7 @@ class FileController extends Controller
         ProcessUploadedFile::dispatch($path);
 
         return response()->json([
-            'message' => 'File received successfully.',
+            'message' => 'Arquivo recebido com sucesso.',
             'identifier' => $path,
         ]);
     }
