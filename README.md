@@ -141,7 +141,7 @@ No diretório `/docs` na raiz do projeto está todos os documentos de tomadas de
 
 ## ⚙️ Configurações do `.env`
 
-O sistema possui variáveis de ambiente exclusivas para controlar o motor de IA e facilitar os testes. Configure-as no seu arquivo `.env`:
+O sistema possui variáveis de ambiente exclusivas para controlar o motor de IA e facilitar os testes. Configure-as no seu arquivo `.env` ou utilize o formato de mock:
 
 ### Configurações de Banco (Obrigatórias)
 ```env
@@ -152,21 +152,11 @@ DB_DATABASE=doc-intelligence
 DB_USERNAME=seu_usuario
 DB_PASSWORD=sua_senha
 ```
-
-### Configurações da IA
-Chave da API (eu enviei uma chave para testes no corpo do email, essa chave será válida por 7 dias a contar da data de envio do email, em caso de dúvida entre em contato para fazer uma nova chave.)
-```env
-AI_API_KEY="sk-xxxx..."
-
-# Régua de confiança: Se a IA retornar uma confiança menor que esse valor (0 a 1), o arquivo será enviado para triagem humana (failed_file).
-AI_MIN_CONFIDENCE_LEVEL=0.7 
-```
-
 ### Configurações de Mock / Testes
-O projeto possui um serviço de Mock embutido para que você possa testar todos os fluxos (sucesso, falhas, quebra de JSON) sem gastar tokens ou bater na API oficial.
+O projeto possui um serviço de Mock embutido para que você possa testar todos os fluxos (sucesso, falhas, quebra de JSON) sem gastar tokens ou bater na API oficial da IA.
 
 ```env
-# Se 'true', desvia as requisições da IA da NVidia e usa o AIMockService internamente.
+# Se 'true', desvia as requisições da IA da NVidia e usa o AIMockService internamente, se 'false' o sistema utilizará o serviço de IA REAL da NVIDIA
 USE_AI_MOCK=true
 
 # Estilo de resposta do Mock (Se USE_AI_MOCK=true):
@@ -177,6 +167,15 @@ MOCK_RESPONSE_STYLE=success
 ```
 > **Aviso:** Sempre que você alterar o valor do `MOCK_RESPONSE_STYLE` ou `USE_AI_MOCK` no `.env`, você **precisa reiniciar o comando `php artisan queue:work`**, pois os *workers* mantêm a configuração antiga na memória. Caso não funcione, considere reiniciar também o projeto com **`php artisan serve`**.
 
+### Configurações da IA
+Insira a chave da IA na variável abaixo. Para esta configuração eu enviei uma chave da IA da NVIDIA no corpo do email, essa chave será válida por 7 dias a contar da data de envio do email, em caso de dúvidas ou expiração, entre em contato comigo para fazer uma nova chave. Você pode testar o projeto com dados mockados. Também lembre de habilitar a variável `USE_AI_MOCK` para `false`
+```env
+AI_API_KEY="sk-xxxx..."
+
+# Régua de confiança: Se a IA retornar uma confiança menor que esse valor (0 a 1), o arquivo será enviado para triagem humana (failed_file).
+AI_MIN_CONFIDENCE_LEVEL=0.7 
+```
+
 ---
 
 ## 📡 Endpoints da API
@@ -185,20 +184,22 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 
 ### 1. Upload de Arquivos
 - **Endpoint:** `POST /api/file`
-- **O que faz:** Recebe o upload do arquivo (PDF, JPG, PNG). O arquivo é salvo temporariamente na pasta `temp_file` e o processamento dele é despachado para uma fila em *background*.
+- **O que faz:** Recebe o upload apenas em arquivos do tipo PDF, JPEG e PNG. O arquivo é salvo temporariamente na pasta `temp_file` e o processamento dele é despachado para uma fila em *background*.
 - **Body (`multipart/form-data`):**
   - `file`: O arquivo físico.
 - **Retorno:** Mensagem de sucesso e o identificador temporário.
+>Nota: Receber a mensagem de sucesso não significa que o arquivo já tenha sido processado. Significa que ele entrou na fila do job para processamento.
 
 ### 2. Listar Arquivos Processados
 - **Endpoint:** `GET /api/file`
-- **O que faz:** Retorna todos os documentos que foram processados **com sucesso** (confiança alta), carregando junto todos os metadados extraídos pela IA. Os arquivos listados aqui já se encontram fisicamente na pasta `files`.
+- **O que faz:** Retorna todos os documentos que foram processados **com sucesso** (confiança alta), carregando junto todos os metadados extraídos pela IA. Os arquivos listados aqui já se encontram fisicamente na pasta `files`. Estes arquivos já estão devidamente **NOMEADOS**, seja pela IA ou pela análise humana.
 
 ### 3. Busca Inteligente de Arquivos
 - **Endpoint:** `GET /api/file-search`
-- **O que faz:** Permite pesquisar termos específicos dentro do JSON de metadados extraídos (ex: nome, valor, descrição). A busca é *case-insensitive*.
+- **O que faz:** Permite pesquisar termos específicos dentro do JSON de metadados extraídos (ex: nome, sobrenome, numero, descrição e etc.). A busca é *case-insensitive*.
 - **Query Params:**
-  - `q`: O termo a ser pesquisado (ex: `/api/file-search?q=João Silva`).
+  - `q`: O termo a ser pesquisado (ex: `/api/file-search?q=Maria`).
+  > Nota: Este endpoint é uma simples consulta SQL e NÃO é a melhor forma de implementação. O ideal seria implementar a busca por metadados utilizando alguma ferramenta especializada, como o Elasticsearch. Abordo esse tema nos documentos de ADRs localizados na pasta /docs do projeto.
 
 ### 4. Listar Arquivos com Falha (Baixa Confiança)
 - **Endpoint:** `GET /api/failed-file`
@@ -206,18 +207,21 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 
 ### 5. Corrigir Arquivo com Falha Manualmente
 - **Endpoint:** `POST /api/fix-file/{id}`
-- **O que faz:** Endpoint destinado à intervenção humana. Recebe os dados corrigidos do usuário, move o arquivo fisicamente da pasta `failed_file` para a pasta final `files`, transfere o registro no banco de dados para a tabela de sucesso e insere a descrição manualmente aprovada.
+- **O que faz:** Endpoint destinado à intervenção humana. Recebe os dados corrigidos do usuário, move o arquivo fisicamente da pasta `failed_file` para a pasta final `files`, transfere o registro no banco de dados para a tabela de sucesso e **renomeia-o**. O campo `description` está aí para caso o usuário queira inserir informações adicionais, este ajudará na identificação do arquivos quando o endpoint de busca (`GET /api/file-search`) for acionado.
 - **Body (`application/json`):**
   - `file_name` (string)
   - `description` (string)
 
 ### 6. Listar Jobs Travados (Crashes)
 - **Endpoint:** `GET /api/failed-jobs`
-- **O que faz:** Retorna a lista da tabela nativa do Laravel `failed_jobs`. Útil para identificar arquivos que nem chegaram a ser analisados devido a um erro de sistema ou erro 500 fatal (ex: falha de banco de dados, servidor sem memória, etc).
+- **O que faz:** Retorna a lista da tabela nativa do Laravel `failed_jobs`. Útil para identificar arquivos que nem chegaram a ser analisados devido a um erro de sistema ou erro 500 fatal (ex: falha de banco de dados, servidor sem memória, IA sem tokens válidos etc). **Esse endpoint foi criado para cenários onde os arquivos estão sendo processados por uma IA REAL, e não para cenários com dados mockados.**
 
 ### 7. Tentar Reprocessar Jobs Travados
 - **Endpoint:** `POST /api/failed-jobs/retry`
-- **O que faz:** Re-enfileira todos os trabalhos que deram problema (executa o equivalente ao comando `queue:retry all`). Muito útil se a API da Nvidia caiu temporariamente e você quer reprocessar toda a fila atrasada de uma só vez.
+- **O que faz:** Re-enfileira todos os trabalhos que deram problema (executa o equivalente ao comando `queue:retry all`). Muito útil se a API da Nvidia caiu temporariamente e você quer reprocessar toda a fila atrasada de uma só vez. **Assim como o anterior, este endpoint foi criado apenas para processamento de arquivos por uma IA REAL.**
+- **Body (`application/json`):**
+  - `id` (string)
+  > Nota: Você pode passar um id como parâmetro OU inserir `all` para re-enfileirar todos os arquivos de uma só vez!
 
 ### 8. Excluir Arquivo Processado
 - **Endpoint:** `DELETE /api/file/{id}`
@@ -231,7 +235,7 @@ Abaixo estão listados todos os endpoints disponíveis na aplicação. Todos ret
 
 ## 🧪 Testes Automatizados
 
-O sistema foi extensivamente testado com o framework **Pest**. As suítes de testes cobrem toda a camada da API (Feature Tests) e a lógica de serviços e filas (Unit Tests), fazendo o *mock* correto das respostas HTTP da Nvidia, dos bancos e dos storages para não onerar APIs externas nem o disco local durante os testes.
+O sistema foi testado com o framework **Pest**. As suítes de testes cobrem toda a camada da API (Feature Tests) e a lógica de serviços e filas (Unit Tests), fazendo o *mock* correto das respostas HTTP da Nvidia, dos bancos e dos storages para não onerar APIs externas nem o disco local durante os testes.
 
 Para rodar todos os testes de uma só vez, utilize o comando Artisan na raiz do projeto:
 
