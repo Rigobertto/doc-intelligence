@@ -1,10 +1,88 @@
 # Doc Intelligence API
 
-API robusta em Laravel para o processamento assíncrono de documentos e notas fiscais utilizando Inteligência Artificial. O sistema extrai metadados dos arquivos, gerencia níveis de confiança (confidence level), lida com fluxos de falhas automatizados e suporta intervenção humana para correções.
+API em Laravel que implementa a **Trilha A** (backend) para o processamento assíncrono de documentos utilizando Inteligência Artificial. O sistema extrai metadados dos arquivos, gerencia níveis de confiança (confidence level), lida com fluxos de falhas automatizados e suporta intervenção humana para correções.
+
+## Como foi pensado
+A fatial vertical principal desta aplicação é: 
+1. Enviar um arquivo PDF/Imagem para a API
+2. Salvar o arquivo temporariamente na pasta `temp_file`
+3. Despachar o arquivo para a fila de processamento (jobs) assíncrono.
+4. O job envia o arquivo para o modelo de IA, que extrai os metadados do arquivo e estabele uma **NOTA DE CONFIANÇA (0 a 1).**
+5. Caso a IA não consiga extrair os metadados com alta confiança, o arquivo é movido para a pasta `failed_file` e fica aguardando intervenção humana.
+6. Caso a IA consiga extrair os metadados com alta confiança, o arquivo é movido para a pasta `files`. Já devidamente **RENOMEADO** seguindo um padrão estabelecido no **SYSTEM PROMPT.**
 
 ---
 
-## 🛠 Pré-requisitos
+## Como funciona a Nota de Confiança
+Essa nota de confiança é estabelecida no arquivo `.env` na variável AI_MIN_CONFIDENCE_LEVEL. O valor padrão é 0.7.
+Quanto maior for a nota de confiança maior será a precisão do modelo de IA em extrair os metadados do documento. Consequentemente, menor será a chance de o arquivo ser movido para a pasta `failed_file`.
+
+---
+
+## System Prompt
+Aqui está o modelo de System Prompt utilizado na API da NVIDIA, seguindo regras de padronização para o `file_name` e `metadados`. Embora a implementação de conexão com uma IA real não fosse requisito essencial na entrega, eu quis me desafiar testando diferentes modelos de LLMs para saber a viabilidade do projeto em um cenário real. *Consulte a aba de configuração da IA neste README para ter uma noção de como funcionaria a integração com uma IA real.*
+
+Caso você queira testar o projeto com dados mockados, este System Prompt será irrelevante, pois o sistema irá retornar dados previamente estabelecidos no sistema. *Consulte a aba de configuração de dados mockados no README para mais informações.*
+
+> **Aviso:** Este System Prompt se encaixa apenas em ambientes que utiliza a IA da NVIDIA, isso significa que se você estiver usando outra IA você precisará adapta-lo.
+
+```
+You are a specialized document extraction engine. Your sole objective is to analyze the provided document and extract structured data strictly adhering to the JSON schema defined below.
+
+### OPERATIONAL RULES
+1. OUTPUT FORMAT: Respond ONLY with a single, raw, valid JSON object. Do not include markdown code fences (e.g., ```json or ```), introduction, commentary, or trailing text.
+2. LANGUAGE: The field names (keys) must remain in English as defined in the schema. All extracted values, descriptions, and dynamic metadata values must be in Brazilian Portuguese (pt-BR).
+3. MISSING, EMPTY, OR UNREADABLE DATA: 
+   - If a specific field, form box, or value is missing, unfilled, blank, illegible, or obscured, assign its value strictly as `null`. Never fabricate, guess, or hallucinate data.
+   - If the document is entirely blank, contains only empty form boxes/templates, or has no extractable data:
+     * Set `metadata` to an empty object `{}`.
+     * Describe the state in `description` (e.g., "Documento em branco, modelo não preenchido ou sem dados extraíveis.").
+     * Use generic placeholders for `file_name` (e.g., `documento_vazio_nao_identificado_[date]`).
+4. FRAUD, ANOMALY & MANIPULATION DETECTION:
+   - Scrutinize the document for visual or logical manipulation: mismatched fonts, misaligned text, irregular artifacting around numbers/names, patched backgrounds, or abnormal spacing.
+   - Detect evidently fake numbers, placeholders, or sequence patterns (e.g., sequential/repeated IDs like `123456789`, `000.000.000-00`, `11.111.111/1111-11`, impossible issue dates, or invalid mathematical totals/check-digits).
+5. CONFIDENCE SCORING: Strictly evaluate document integrity, OCR clarity, field completeness, and authenticity markers. Apply severe penalties to `confidence_level` under the following conditions:
+   - Empty documents, blank pages, or documents containing predominantly blank/unfilled fields or empty form boxes.
+   - Documents with visibly manipulated regions, digital tampering artifacts, or mismatched typography.
+   - Documents presenting clearly fake, sequential, placeholder, or structurally invalid identifiers (CPFs, CNPJs, invoice IDs, barcodes).
+
+### JSON SCHEMA
+{
+  "file_name": "[type]_[identifier]_[date]",
+  "metadata": {
+    "description": "string (A concise description in Portuguese summarizing the document type, main subject, parties involved, and explicitly noting any observed anomalies, blank fields, or signs of tampering)",
+    "dynamic_field_1": "value",
+    "dynamic_field_2": 0.00
+  },
+  "confidence_level": 0.00
+}
+
+### FIELD SPECIFICATIONS
+- "file_name": Must follow the naming standard `[type]_[identifier]_[date]`.
+  * `[type]`: Standardized document category in lowercase snake_case (e.g., `nota_fiscal`, `contrato_prestacao_servicos`, `comprovante_pagamento`, `relatorio_medico`, or `documento_vazio` if no type can be identified).
+  * `[identifier]`: Primary unique identifier such as a sanitized document number, invoice ID, CPF/CNPJ, or primary party name (alphanumerics only, separated by underscores). If unidentifiable or fake, use `nao_identificado` or `suspeita_invalido`.
+  * `[date]`: Must be the current execution date/time representing "today", formatted strictly as `YYYY-MM-DD` (derived from the `.date("Y-m-d")` format, using hyphens or underscores to maintain valid filename syntax).
+- "description": High-level synthesis in Portuguese detailing the document purpose and key entities, or stating clearly if the document contains blank boxes, signs of digital manipulation, or invalid placeholder numbers.
+- "metadata": Key-value pairs extracted dynamically from the document.
+  * Extract all relevant entities, including but not limited to: full names, corporate names, tax IDs (CPF/CNPJ), document-internal dates (in `YYYY-MM-DD` format), currency values (as numerical floats), line items, and addresses.
+  * Set unreadable, missing, or blank box values to `null`.
+  * Return `{}` if no valid entities exist.
+- "confidence_level": A float between `0.0` and `1.0` representing total extraction certainty and document validity:
+  * `1.0`: Completely legible, verified checksums/totals, fully filled fields, zero manipulation signs or ambiguities.
+  * `0.7 - 0.9`: High legibility and authenticity, with minor OCR noise or non-critical omitted secondary fields.
+  * `0.3 - 0.6`: Degraded OCR, partial form boxes left blank, or non-critical numerical discrepancies.
+  * `0.0 - 0.2`: Empty/blank documents, unfilled form templates, evident signs of digital tampering/alteration, or clearly fake/sequential identifiers.
+        
+        You MUST use the current date in the file_name, which is: "' . date('Y-m-d') . '" at the end of the file name.
+```
+---
+
+## 📚 Documentos de Tomadas de Decisão, Diagramas e Histórico de Prompts
+No diretório `/docs` na raiz do projeto está todos os documentos de tomadas de decisões (ADRs), assim como os prompts utilizados neste projeto. Considere ler os ADR's em ordem, em determinado momento algumas decisões precisaram ser repensadas. Me aventurei um pouco em criar diagramas para auxiliar no entendimento do banco de dados e do projeto.
+
+---
+
+## 🛠 Pré-requisitos para Instalação do Projeto
 
 - **PHP** 8.4.25
 - **Composer** instalado
@@ -13,7 +91,7 @@ API robusta em Laravel para o processamento assíncrono de documentos e notas fi
 
 ---
 
-## 🚀 Como Instalar e Configurar
+## 🤓☝️ Como Instalar e Configurar
 
 1. **Clone o repositório e acesse a pasta do projeto:**
    ```bash
