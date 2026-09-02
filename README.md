@@ -88,6 +88,8 @@ No diretório `/docs` na raiz do projeto está todos os documentos de tomadas de
 - **Composer** instalado
 - **PostgreSQL** (O banco de dados oficial do projeto, necessário devido ao uso avançado de colunas JSON nas buscas)
 - **Extensões PHP:** `pdo_pgsql`, `fileinfo`, `gd`, `curl`, entre outras nativas do Laravel.
+- **Habilitar Arquivos Temporários no PHP.ini:** Acesse o arquivo do seu PHP e habilite essa variável de ambiente `upload_tmp_dir ="C:\Temp"`
+>**Importante:** Essa configuração é essencial, caso contrário as rotas da API nao poderão serem testadas.
 
 ---
 
